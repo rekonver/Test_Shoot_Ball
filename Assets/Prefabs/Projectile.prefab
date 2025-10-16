@@ -153,3 +153,7 @@ MonoBehaviour:
   hitLayers:
     serializedVersion: 2
     m_Bits: 8
+  maxLifeTime: 4
+  explosionMultiplier: 4
+  radiusInfectionPrefab: {fileID: 6642321451473430285, guid: 2b79bfcb5645e7d46a938609721bde82, type: 3}
+  infectionLifetime: 1.5

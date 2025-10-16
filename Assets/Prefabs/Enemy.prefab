@@ -44,7 +44,6 @@ GameObject:
   - component: {fileID: 7913527999704092350}
   - component: {fileID: 6499068542890148502}
   - component: {fileID: 4839315236992175361}
-  - component: {fileID: 7540026199699225256}
   m_Layer: 3
   m_Name: Enemy
   m_TagString: Untagged
@@ -157,20 +156,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   DownSpawnPos: {fileID: 4875592340461897473}
-  exploded: 0
   radius: 0.25
---- !u!114 &7540026199699225256
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6360341393014300837}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e57bffb9e68323c4b9d635e15e664dad, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  DownSpawnPos: {fileID: 0}
   exploded: 0
-  radius: 0.25
+  explosionPrefab: {fileID: 202406072590803632, guid: 65a6ef858c6cf0849bb2cf6666bdde76, type: 3}
+  explosionEffectLifetime: 1.5
+  pool: {fileID: 0}
