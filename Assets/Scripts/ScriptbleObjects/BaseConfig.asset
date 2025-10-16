@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5252f2788f117494983098991d4d5ec5, type: 3}
+  m_Name: BaseConfig
+  m_EditorClassIdentifier: 
+  OpenDistance: 5
+  initialPlayerRadius: 0.6
+  minCriticalRadius: 0.09
+  initialReservePercent: 0.2
+  PlayerMoveSpeed: 2
+  chargeRate: 0.6
+  maxProjectileRadius: 1.2
+  minProjectileRadius: 0.08
+  transferK: 1
+  infectionMultiplier: 1.1
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  advanceSpeed: 2
+  doorOpenDistance: 5
+  mutation: 0.1
