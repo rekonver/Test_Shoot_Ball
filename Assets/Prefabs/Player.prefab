@@ -149,11 +149,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cb59720c04419d84e9c5407fcf1606a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  config: {fileID: 0}
   target: {fileID: 0}
   projectilePool: {fileID: 0}
+  door: {fileID: 0}
   projectileSpawnPoint: {fileID: 0}
   infectionSystem: {fileID: 0}
-  obstacleLayer:
-    serializedVersion: 2
-    m_Bits: 0

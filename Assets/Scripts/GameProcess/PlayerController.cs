@@ -44,6 +44,12 @@ public class PlayerController : MonoBehaviour
                 config = Instances.Instance.Get<GameplayConfig>();
         }
 
+        if (config == null)
+        {
+            Debug.LogError("PlayerController: GameplayConfig not found!");
+            return;
+        }
+
         playerRadius = config.initialPlayerRadius * (1f + config.initialReservePercent);
         UpdateVisualScale(playerRadius);
     }
@@ -114,14 +120,25 @@ public class PlayerController : MonoBehaviour
 
         if (projectilePool == null)
         {
-            Debug.LogError("No pool available");
+            Debug.LogError("PlayerController: No ProjectilePool available");
             isCharging = false;
             return;
         }
 
-        currentPreviewProjectile = projectilePool.Get(projectileSpawnPoint.position, Quaternion.identity).gameObject;
-        previewProjectileComp = currentPreviewProjectile.GetComponent<Projectile>();
-        previewProjectileComp.Init(config.minProjectileRadius);
+        // Беремо Projectile з пулу (очікуємо, що Get повертає Projectile)
+        Projectile proj = projectilePool.Get(projectileSpawnPoint.position, Quaternion.identity);
+        if (proj == null)
+        {
+            Debug.LogError("PlayerController: ProjectilePool.Get returned null");
+            isCharging = false;
+            return;
+        }
+
+        currentPreviewProjectile = proj.gameObject;
+        previewProjectileComp = proj;
+
+        // Важливо: передаємо посилання на пул у Init
+        previewProjectileComp.Init(config.minProjectileRadius, projectilePool);
     }
 
     void UpdateCharge(float dt)
@@ -146,7 +163,9 @@ public class PlayerController : MonoBehaviour
             desiredProjRadius = Mathf.Min(desiredProjRadius, maxProjRadiusAllowed, config.maxProjectileRadius);
         }
 
-        previewProjectileComp.Init(desiredProjRadius);
+        // Повторно ініціалізуємо пресв'ю з пулом, щоб previewProjectileComp.projectilePool не став null
+        previewProjectileComp.Init(desiredProjRadius, projectilePool);
+
         float tempDelta = (desiredProjRadius - config.minProjectileRadius) * config.transferK;
         float previewPlayerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - tempDelta);
         UpdateVisualScale(previewPlayerRadius);
@@ -156,7 +175,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isCharging) return;
         isCharging = false;
-        if (currentPreviewProjectile == null) return;
+        if (currentPreviewProjectile == null || previewProjectileComp == null) return;
 
         float projRadius = previewProjectileComp.radius;
         float delta = (projRadius - config.minProjectileRadius) * config.transferK;
@@ -164,7 +183,10 @@ public class PlayerController : MonoBehaviour
         playerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - delta);
         UpdateVisualScale(playerRadius);
 
+        // запускаємо снаряд. previewProjectileComp вже має посилання на projectilePool
         previewProjectileComp.Fire(transform.forward);
+
+        // очистка локальних preview-змінних — сам projectile повернеться в пул, коли закінчить життя або вдариться
         currentPreviewProjectile = null;
         previewProjectileComp = null;
 
