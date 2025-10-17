@@ -1,204 +1,235 @@
 using UnityEngine;
+using System;
 using System.Collections;
 
 [RequireComponent(typeof(Collider))]
 public class PlayerController : MonoBehaviour
 {
-    public Transform target; // goal position
-    public ProjectilePool projectilePool; // новий пул
-    public Door door;
     public Transform projectileSpawnPoint;
-    public InfectionSystem infectionSystem; // optional, буде через Instances якщо null
+    public Animator animator;
+    public float playerRadius;
 
+    private ProjectilePool projectilePool;
+    private Door door;
     private GameplayConfig config;
-    private Coroutine doorCheckCoroutine;
-    private bool hasStarted = false;
-    private float playerRadius;
+    private Projectile previewProjectile;
+    private Vector3 aimDirection = Vector3.forward;
+    private bool isCharging;
+    private float chargeTime;
+    private bool hasStarted;
 
-    GameObject currentPreviewProjectile;
-    Projectile previewProjectileComp;
-    bool isCharging = false;
-    float chargeTime = 0f;
-    bool advancing = false;
+    private bool isDead = false;
+    public event Action OnDeath;
 
-    // --- Gizmo variables ---
-    private Vector3 openPointXZ;
-    private bool hasOpenPoint = false;
+    private Camera cam;
 
     void Start()
     {
-        if (Instances.Instance != null)
-        {
-            if (projectilePool == null)
-                projectilePool = Instances.Instance.GetOrFind<ProjectilePool>();
+        cam = Camera.main;
 
-            if (infectionSystem == null)
-                infectionSystem = Instances.Instance.GetOrFind<InfectionSystem>();
-
-            if (door == null)
-                door = Instances.Instance.GetOrFind<Door>();
-
-            Instances.Instance.Register<PlayerController>(this);
-
-            if (config == null)
-                config = Instances.Instance.Get<GameplayConfig>();
-        }
+        var inst = Instances.Instance;
+        projectilePool = inst.Get<ProjectilePool>();
+        door = inst.Get<Door>();
+        config = inst.Get<GameplayConfig>();
 
         playerRadius = config.initialPlayerRadius * (1f + config.initialReservePercent);
         UpdateVisualScale(playerRadius);
     }
 
-    public void StartDoorCheck()
-    {
-        if (doorCheckCoroutine != null)
-            StopCoroutine(doorCheckCoroutine);
-
-        doorCheckCoroutine = StartCoroutine(CheckDoorDistanceRoutine());
-    }
-
-    private IEnumerator CheckDoorDistanceRoutine()
-    {
-        if (config == null || door == null)
-            yield break;
-
-        Transform doorTransform = door.transform;
-        float openDistance = config.OpenDistance;
-
-        Vector3 doorXZ = new Vector3(doorTransform.position.x, 0, doorTransform.position.z);
-        Vector3 playerXZ = new Vector3(transform.position.x, 0, transform.position.z);
-        Vector3 dir = (doorXZ - playerXZ).normalized;
-
-        openPointXZ = doorXZ - dir * openDistance;
-        hasOpenPoint = true;
-
-        float distance = Vector3.Distance(playerXZ, doorXZ);
-        if (distance > openDistance)
-        {
-            float timeToReach = (distance - openDistance) / config.PlayerMoveSpeed;
-            yield return new WaitForSeconds(timeToReach);
-        }
-
-        door.Open();
-    }
-
     void Update()
     {
+        if (isDead) return;
+
         HandleInput();
 
-        if (hasStarted)
+        if (isCharging && previewProjectile != null)
         {
-            transform.Translate(Vector3.forward * config.advanceSpeed * Time.deltaTime);
+            previewProjectile.transform.position = projectileSpawnPoint.position;
         }
+
+        if (hasStarted)
+            transform.position += transform.forward * config.advanceSpeed * Time.deltaTime;
     }
 
     void HandleInput()
     {
-        if (Input.GetMouseButtonDown(0))
-            StartCharge();
-        if (Input.GetMouseButton(0) && isCharging)
-            UpdateCharge(Time.deltaTime);
-        if (Input.GetMouseButtonUp(0) && isCharging)
-            ReleaseCharge();
+        if (isDead) return;
+
+        if (Input.GetMouseButtonDown(0)) StartCharge();
+        if (Input.GetMouseButton(0) && isCharging) UpdateCharge(Time.deltaTime);
+        if (Input.GetMouseButtonUp(0) && isCharging) ReleaseCharge();
     }
 
     void StartCharge()
     {
-        if (advancing) return;
-        if (playerRadius <= config.minCriticalRadius + 0.0001f) return;
+        if (playerRadius <= config.minCriticalRadius) return;
 
         isCharging = true;
         chargeTime = 0f;
 
-        if (projectilePool == null && Instances.Instance != null)
-            projectilePool = Instances.Instance.GetOrFind<ProjectilePool>();
+        previewProjectile = projectilePool.Get(projectileSpawnPoint.position, Quaternion.identity);
+        previewProjectile.Init(config.minProjectileRadius, projectilePool);
 
-        if (projectilePool == null)
-        {
-            Debug.LogError("No pool available");
-            isCharging = false;
-            return;
-        }
-
-        currentPreviewProjectile = projectilePool.Get(projectileSpawnPoint.position, Quaternion.identity).gameObject;
-        previewProjectileComp = currentPreviewProjectile.GetComponent<Projectile>();
-        previewProjectileComp.Init(config.minProjectileRadius);
+        aimDirection = ComputeAimDirection();
+        previewProjectile.transform.forward = aimDirection;
+        previewProjectile.transform.position = projectileSpawnPoint.position;
     }
 
     void UpdateCharge(float dt)
     {
-        if (previewProjectileComp == null) return;
+        if (previewProjectile == null) return;
+
+        aimDirection = ComputeAimDirection();
+        previewProjectile.transform.forward = aimDirection;
+        previewProjectile.transform.position = projectileSpawnPoint.position;
 
         chargeTime += dt;
-        float desiredProjRadius = Mathf.Clamp(
-            config.minProjectileRadius + config.chargeRate * chargeTime,
-            config.minProjectileRadius,
-            config.maxProjectileRadius
-        );
+        float desiredProj = config.minProjectileRadius + config.chargeRate * chargeTime;
 
-        float maxDeltaAllowed = playerRadius - config.minCriticalRadius;
-        if (maxDeltaAllowed <= 0f)
-            desiredProjRadius = config.minProjectileRadius;
-        else
+        float maxByPlayer = Mathf.Min(config.maxProjectileRadius, playerRadius);
+        float maxByCritical = config.minProjectileRadius;
+        if (config.transferK > 0f)
+            maxByCritical = config.minProjectileRadius + (playerRadius - config.minCriticalRadius) / config.transferK;
+
+        float allowedMax = Mathf.Max(config.minProjectileRadius, Mathf.Min(maxByPlayer, maxByCritical));
+
+        desiredProj = Mathf.Clamp(desiredProj, config.minProjectileRadius, allowedMax);
+
+        previewProjectile.Init(desiredProj, projectilePool);
+
+        float newPlayerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - (desiredProj - config.minProjectileRadius) * config.transferK);
+        UpdateVisualScale(newPlayerRadius);
+
+        const float eps = 1e-6f;
+        if (desiredProj >= allowedMax - eps)
         {
-            float maxProjRadiusAllowed =
-                config.minProjectileRadius +
-                (maxDeltaAllowed / Mathf.Max(0.00001f, config.transferK));
-            desiredProjRadius = Mathf.Min(desiredProjRadius, maxProjRadiusAllowed, config.maxProjectileRadius);
+            ReleaseCharge();
         }
-
-        previewProjectileComp.Init(desiredProjRadius);
-        float tempDelta = (desiredProjRadius - config.minProjectileRadius) * config.transferK;
-        float previewPlayerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - tempDelta);
-        UpdateVisualScale(previewPlayerRadius);
     }
 
     void ReleaseCharge()
     {
-        if (!isCharging) return;
+        if (previewProjectile == null || isDead) return;
+
         isCharging = false;
-        if (currentPreviewProjectile == null) return;
 
-        float projRadius = previewProjectileComp.radius;
-        float delta = (projRadius - config.minProjectileRadius) * config.transferK;
+        Vector3 finalAim = ComputeAimDirection();
+        aimDirection = finalAim;
+        previewProjectile.transform.forward = finalAim;
 
-        playerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - delta);
+        previewProjectile.transform.position = projectileSpawnPoint.position;
+        previewProjectile.transform.rotation = Quaternion.LookRotation(finalAim, Vector3.up);
+
+        float projRadius = previewProjectile.radius;
+        playerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - (projRadius - config.minProjectileRadius) * config.transferK);
         UpdateVisualScale(playerRadius);
 
-        previewProjectileComp.Fire(transform.forward);
-        currentPreviewProjectile = null;
-        previewProjectileComp = null;
+        previewProjectile.Fire(finalAim);
+        previewProjectile = null;
+
+        if (playerRadius <= config.minCriticalRadius + 0.0001f)
+        {
+            Death();
+            return;
+        }
 
         if (!hasStarted)
         {
             hasStarted = true;
-            StartDoorCheck();
+            animator?.SetTrigger("StartWalk");
+            StartCoroutine(OpenDoorRoutine());
         }
     }
 
-    void UpdateVisualScale(float radiusToShow)
+    IEnumerator OpenDoorRoutine()
     {
-        transform.localScale = Vector3.one * radiusToShow * 2f;
+        float distance = Vector3.Distance(transform.position, door.transform.position);
+        float openDist = config.OpenDistance;
+        if (distance > openDist)
+            yield return new WaitForSeconds((distance - openDist) / config.PlayerMoveSpeed);
+        door.Open();
     }
 
-    void OnDrawGizmos()
+    void UpdateVisualScale(float r)
     {
-        if (!hasOpenPoint) return;
+        if (!isDead)
+            transform.localScale = Vector3.one * r * 2f;
+    }
 
-        float planeY = transform.position.y;
-        Vector3 openPointOnPlane = new Vector3(openPointXZ.x, planeY, openPointXZ.z);
+    private Vector3 ComputeAimDirection()
+    {
+        if (cam == null) return transform.forward;
 
-        Gizmos.color = Color.green;
-        Gizmos.DrawSphere(openPointOnPlane, 0.1f);
+        Ray ray = cam.ScreenPointToRay(Input.mousePosition);
 
-        if (door != null)
+        if (Physics.Raycast(ray, out RaycastHit hit, 100f))
         {
-            Vector3 doorOnPlane = new Vector3(door.transform.position.x, planeY, door.transform.position.z);
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawLine(openPointOnPlane, doorOnPlane);
+            Vector3 hitPoint = hit.point;
+            hitPoint.y = projectileSpawnPoint.position.y;
+            return (hitPoint - projectileSpawnPoint.position).normalized;
         }
 
-        Gizmos.color = Color.cyan;
-        Vector3 fromOnPlane = new Vector3(transform.position.x, planeY, transform.position.z);
-        Gizmos.DrawLine(fromOnPlane, openPointOnPlane);
+        Vector3 dir = cam.transform.forward;
+        dir.y = 0f;
+        return dir.normalized;
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        if (isDead) return;
+
+        if (IsLayerInMask(collision.gameObject.layer, config.obstacleLayer))
+            Death();
+    }
+
+    private bool IsLayerInMask(int layer, LayerMask mask)
+    {
+        return (mask.value & (1 << layer)) != 0;
+    }
+
+    public void Death()
+    {
+        if (isDead) return;
+        isDead = true;
+        isCharging = false;
+        hasStarted = false;
+
+        var col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+
+        var rb = GetComponent<Rigidbody>();
+        if (rb != null) rb.isKinematic = true;
+
+        if (previewProjectile != null && projectilePool != null)
+        {
+            projectilePool.Return(previewProjectile);
+            previewProjectile = null;
+        }
+
+        StopAllCoroutines();
+        animator?.SetTrigger("Death");
+
+        StartCoroutine(ShrinkAndDie());
+    }
+
+    private IEnumerator ShrinkAndDie()
+    {
+        float duration = 0.6f;
+        float t = 0f;
+        Vector3 startScale = transform.localScale;
+
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float k = 1f - Mathf.SmoothStep(0f, 1f, t / duration);
+            transform.localScale = startScale * k;
+            yield return null;
+        }
+
+        transform.localScale = Vector3.zero;
+        OnDeath?.Invoke();
+
+        var level = Instances.Instance.Get<LevelManager>();
+        level.Fail();
     }
 }

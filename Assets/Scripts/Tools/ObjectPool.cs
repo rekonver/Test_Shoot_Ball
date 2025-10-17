@@ -1,7 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// Базовий абстрактний пул
 public abstract class ObjectPool<T> : MonoBehaviour where T : MonoBehaviour
 {
 
@@ -25,7 +24,7 @@ public abstract class ObjectPool<T> : MonoBehaviour where T : MonoBehaviour
         RegisterPool();
     }
 
-    // Реєстрація в Instances
+
     protected abstract void RegisterPool();
 
     public virtual T Get(Vector3 pos, Quaternion rot)
@@ -57,6 +56,5 @@ public abstract class ObjectPool<T> : MonoBehaviour where T : MonoBehaviour
         pool.Enqueue(obj);
     }
 
-    // Метод для скидання стану об’єкта (переопреділяється у дочірніх)
     protected abstract void ResetObject(T obj);
 }

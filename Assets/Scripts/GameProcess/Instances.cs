@@ -7,7 +7,6 @@ public class Instances : MonoBehaviour
     public static Instances Instance { get; private set; }
 
     [Header("Optional scene instances")]
-    public InfectionSystem infectionSystem;
     public LevelManager levelManager;
     public PlayerController playerController;
     public Door door;
@@ -20,6 +19,8 @@ public class Instances : MonoBehaviour
 
     void Awake()
     {
+        Application.targetFrameRate = 60;
+
         if (Instance != null && Instance != this)
         {
             Destroy(this);
@@ -35,7 +36,6 @@ public class Instances : MonoBehaviour
 
     void RegisterDefaults()
     {
-        if (infectionSystem != null) Register<InfectionSystem>(infectionSystem);
         if (levelManager != null) Register<LevelManager>(levelManager);
         if (playerController != null) Register<PlayerController>(playerController);
         if (door != null) Register<Door>(door);
@@ -97,19 +97,6 @@ public class Instances : MonoBehaviour
     {
         if (TryGet<T>(out var inst)) return inst;
         Debug.LogWarning($"Instances: no registered instance for {typeof(T).Name}");
-        return null;
-    }
-
-    public T GetOrFind<T>() where T : class
-    {
-        if (TryGet<T>(out var inst)) return inst;
-        var found = FindObjectOfType(typeof(T)) as T;
-        if (found != null)
-        {
-            Register<T>(found);
-            return found;
-        }
-        Debug.LogWarning($"Instances: did not find {typeof(T).Name} in scene");
         return null;
     }
 
