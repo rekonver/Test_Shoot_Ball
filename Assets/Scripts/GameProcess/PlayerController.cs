@@ -1,226 +1,205 @@
 using UnityEngine;
+using System;
 using System.Collections;
 
 [RequireComponent(typeof(Collider))]
 public class PlayerController : MonoBehaviour
 {
-    public Transform target; // goal position
-    public ProjectilePool projectilePool; // новий пул
-    public Door door;
     public Transform projectileSpawnPoint;
-    public InfectionSystem infectionSystem; // optional, буде через Instances якщо null
+    public Animator animator;
+    public float playerRadius;
 
+    private ProjectilePool projectilePool;
+    private Door door;
     private GameplayConfig config;
-    private Coroutine doorCheckCoroutine;
-    private bool hasStarted = false;
-    private float playerRadius;
+    private Projectile previewProjectile;
+    private Vector3 aimDirection = Vector3.forward;
+    private bool isCharging;
+    private float chargeTime;
+    private bool hasStarted;
 
-    GameObject currentPreviewProjectile;
-    Projectile previewProjectileComp;
-    bool isCharging = false;
-    float chargeTime = 0f;
-    bool advancing = false;
+    private bool isDead = false;
+    public event Action OnDeath;
 
-    // --- Gizmo variables ---
-    private Vector3 openPointXZ;
-    private bool hasOpenPoint = false;
+    private Camera cam;
 
     void Start()
     {
-        if (Instances.Instance != null)
-        {
-            if (projectilePool == null)
-                projectilePool = Instances.Instance.GetOrFind<ProjectilePool>();
+        cam = Camera.main;
 
-            if (infectionSystem == null)
-                infectionSystem = Instances.Instance.GetOrFind<InfectionSystem>();
-
-            if (door == null)
-                door = Instances.Instance.GetOrFind<Door>();
-
-            Instances.Instance.Register<PlayerController>(this);
-
-            if (config == null)
-                config = Instances.Instance.Get<GameplayConfig>();
-        }
-
-        if (config == null)
-        {
-            Debug.LogError("PlayerController: GameplayConfig not found!");
-            return;
-        }
+        var inst = Instances.Instance;
+        projectilePool = inst.GetOrFind<ProjectilePool>();
+        door = inst.GetOrFind<Door>();
+        config = inst.Get<GameplayConfig>();
 
         playerRadius = config.initialPlayerRadius * (1f + config.initialReservePercent);
         UpdateVisualScale(playerRadius);
     }
 
-    public void StartDoorCheck()
-    {
-        if (doorCheckCoroutine != null)
-            StopCoroutine(doorCheckCoroutine);
-
-        doorCheckCoroutine = StartCoroutine(CheckDoorDistanceRoutine());
-    }
-
-    private IEnumerator CheckDoorDistanceRoutine()
-    {
-        if (config == null || door == null)
-            yield break;
-
-        Transform doorTransform = door.transform;
-        float openDistance = config.OpenDistance;
-
-        Vector3 doorXZ = new Vector3(doorTransform.position.x, 0, doorTransform.position.z);
-        Vector3 playerXZ = new Vector3(transform.position.x, 0, transform.position.z);
-        Vector3 dir = (doorXZ - playerXZ).normalized;
-
-        openPointXZ = doorXZ - dir * openDistance;
-        hasOpenPoint = true;
-
-        float distance = Vector3.Distance(playerXZ, doorXZ);
-        if (distance > openDistance)
-        {
-            float timeToReach = (distance - openDistance) / config.PlayerMoveSpeed;
-            yield return new WaitForSeconds(timeToReach);
-        }
-
-        door.Open();
-    }
-
     void Update()
     {
+        if (isDead) return;
+
         HandleInput();
 
         if (hasStarted)
-        {
-            transform.Translate(Vector3.forward * config.advanceSpeed * Time.deltaTime);
-        }
+            transform.position += transform.forward * config.advanceSpeed * Time.deltaTime;
     }
 
     void HandleInput()
     {
-        if (Input.GetMouseButtonDown(0))
-            StartCharge();
-        if (Input.GetMouseButton(0) && isCharging)
-            UpdateCharge(Time.deltaTime);
-        if (Input.GetMouseButtonUp(0) && isCharging)
-            ReleaseCharge();
+        if (isDead) return;
+
+        if (Input.GetMouseButtonDown(0)) StartCharge();
+        if (Input.GetMouseButton(0) && isCharging) UpdateCharge(Time.deltaTime);
+        if (Input.GetMouseButtonUp(0) && isCharging) ReleaseCharge();
     }
 
     void StartCharge()
     {
-        if (advancing) return;
-        if (playerRadius <= config.minCriticalRadius + 0.0001f) return;
+        if (playerRadius <= config.minCriticalRadius) return;
 
         isCharging = true;
         chargeTime = 0f;
 
-        if (projectilePool == null && Instances.Instance != null)
-            projectilePool = Instances.Instance.GetOrFind<ProjectilePool>();
+        previewProjectile = projectilePool.Get(projectileSpawnPoint.position, Quaternion.identity);
+        previewProjectile.Init(config.minProjectileRadius, projectilePool);
 
-        if (projectilePool == null)
-        {
-            Debug.LogError("PlayerController: No ProjectilePool available");
-            isCharging = false;
-            return;
-        }
-
-        // Беремо Projectile з пулу (очікуємо, що Get повертає Projectile)
-        Projectile proj = projectilePool.Get(projectileSpawnPoint.position, Quaternion.identity);
-        if (proj == null)
-        {
-            Debug.LogError("PlayerController: ProjectilePool.Get returned null");
-            isCharging = false;
-            return;
-        }
-
-        currentPreviewProjectile = proj.gameObject;
-        previewProjectileComp = proj;
-
-        // Важливо: передаємо посилання на пул у Init
-        previewProjectileComp.Init(config.minProjectileRadius, projectilePool);
+        aimDirection = ComputeAimDirection();
+        previewProjectile.transform.forward = aimDirection;
     }
 
     void UpdateCharge(float dt)
     {
-        if (previewProjectileComp == null) return;
+        if (previewProjectile == null) return;
+
+        aimDirection = ComputeAimDirection();
+        previewProjectile.transform.forward = aimDirection;
 
         chargeTime += dt;
-        float desiredProjRadius = Mathf.Clamp(
+        float projRadius = Mathf.Clamp(
             config.minProjectileRadius + config.chargeRate * chargeTime,
             config.minProjectileRadius,
-            config.maxProjectileRadius
+            Mathf.Min(config.maxProjectileRadius, playerRadius)
         );
 
-        float maxDeltaAllowed = playerRadius - config.minCriticalRadius;
-        if (maxDeltaAllowed <= 0f)
-            desiredProjRadius = config.minProjectileRadius;
-        else
-        {
-            float maxProjRadiusAllowed =
-                config.minProjectileRadius +
-                (maxDeltaAllowed / Mathf.Max(0.00001f, config.transferK));
-            desiredProjRadius = Mathf.Min(desiredProjRadius, maxProjRadiusAllowed, config.maxProjectileRadius);
-        }
-
-        // Повторно ініціалізуємо пресв'ю з пулом, щоб previewProjectileComp.projectilePool не став null
-        previewProjectileComp.Init(desiredProjRadius, projectilePool);
-
-        float tempDelta = (desiredProjRadius - config.minProjectileRadius) * config.transferK;
-        float previewPlayerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - tempDelta);
-        UpdateVisualScale(previewPlayerRadius);
+        previewProjectile.Init(projRadius, projectilePool);
+        UpdateVisualScale(Mathf.Max(config.minCriticalRadius, playerRadius - (projRadius - config.minProjectileRadius) * config.transferK));
     }
 
     void ReleaseCharge()
     {
-        if (!isCharging) return;
+        if (previewProjectile == null || isDead) return;
+
         isCharging = false;
-        if (currentPreviewProjectile == null || previewProjectileComp == null) return;
 
-        float projRadius = previewProjectileComp.radius;
-        float delta = (projRadius - config.minProjectileRadius) * config.transferK;
+        Vector3 finalAim = ComputeAimDirection();
+        aimDirection = finalAim;
+        previewProjectile.transform.forward = finalAim;
 
-        playerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - delta);
+        float projRadius = previewProjectile.radius;
+        playerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - (projRadius - config.minProjectileRadius) * config.transferK);
         UpdateVisualScale(playerRadius);
 
-        // запускаємо снаряд. previewProjectileComp вже має посилання на projectilePool
-        previewProjectileComp.Fire(transform.forward);
+        previewProjectile.Fire(finalAim);
+        previewProjectile = null;
 
-        // очистка локальних preview-змінних — сам projectile повернеться в пул, коли закінчить життя або вдариться
-        currentPreviewProjectile = null;
-        previewProjectileComp = null;
+        if (playerRadius <= config.minCriticalRadius + 0.0001f)
+        {
+            Death();
+            return;
+        }
 
         if (!hasStarted)
         {
             hasStarted = true;
-            StartDoorCheck();
+            animator?.SetTrigger("StartWalk");
+            StartCoroutine(OpenDoorRoutine());
         }
     }
 
-    void UpdateVisualScale(float radiusToShow)
+    IEnumerator OpenDoorRoutine()
     {
-        transform.localScale = Vector3.one * radiusToShow * 2f;
+        float distance = Vector3.Distance(transform.position, door.transform.position);
+        float openDist = config.OpenDistance;
+        if (distance > openDist)
+            yield return new WaitForSeconds((distance - openDist) / config.PlayerMoveSpeed);
+        door.Open();
     }
 
-    void OnDrawGizmos()
+    void UpdateVisualScale(float r)
     {
-        if (!hasOpenPoint) return;
+        if (!isDead)
+            transform.localScale = Vector3.one * r * 2f;
+    }
 
-        float planeY = transform.position.y;
-        Vector3 openPointOnPlane = new Vector3(openPointXZ.x, planeY, openPointXZ.z);
+    private Vector3 ComputeAimDirection()
+    {
+        if (cam == null) return transform.forward;
 
-        Gizmos.color = Color.green;
-        Gizmos.DrawSphere(openPointOnPlane, 0.1f);
+        Ray ray = cam.ScreenPointToRay(Input.mousePosition);
 
-        if (door != null)
+        if (Physics.Raycast(ray, out RaycastHit hit, 100f))
         {
-            Vector3 doorOnPlane = new Vector3(door.transform.position.x, planeY, door.transform.position.z);
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawLine(openPointOnPlane, doorOnPlane);
+            Vector3 hitPoint = hit.point;
+            hitPoint.y = projectileSpawnPoint.position.y; // фіксуємо Y
+            return (hitPoint - projectileSpawnPoint.position).normalized;
         }
 
-        Gizmos.color = Color.cyan;
-        Vector3 fromOnPlane = new Vector3(transform.position.x, planeY, transform.position.z);
-        Gizmos.DrawLine(fromOnPlane, openPointOnPlane);
+        Vector3 dir = cam.transform.forward;
+        dir.y = 0f;
+        return dir.normalized;
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        if (isDead) return;
+
+        if (IsLayerInMask(collision.gameObject.layer, config.obstacleLayer))
+            Death();
+    }
+
+    private bool IsLayerInMask(int layer, LayerMask mask)
+    {
+        return (mask.value & (1 << layer)) != 0;
+    }
+
+    public void Death()
+    {
+        if (isDead) return;
+        isDead = true;
+        isCharging = false;
+        hasStarted = false;
+
+        var col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+
+        var rb = GetComponent<Rigidbody>();
+        if (rb != null) rb.isKinematic = true;
+
+        StopAllCoroutines();
+        animator?.SetTrigger("Death");
+
+        StartCoroutine(ShrinkAndDie());
+    }
+
+    private IEnumerator ShrinkAndDie()
+    {
+        float duration = 0.6f;
+        float t = 0f;
+        Vector3 startScale = transform.localScale;
+
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float k = 1f - Mathf.SmoothStep(0f, 1f, t / duration);
+            transform.localScale = startScale * k;
+            yield return null;
+        }
+
+        transform.localScale = Vector3.zero;
+        OnDeath?.Invoke();
+
+        Debug.Log($"{name}: Player smoothly shrunk to zero (death).");
     }
 }

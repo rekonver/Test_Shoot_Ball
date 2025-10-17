@@ -3,46 +3,76 @@ using System;
 using System.Collections;
 
 [RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Collider))]
 public class Projectile : MonoBehaviour
 {
     public float radius { get; private set; } = 0.1f;
-    public float speed = 12f;
-    public LayerMask hitLayers;
     public float maxLifeTime = 4f;
-    public float explosionMultiplier = 3f;
+
 
     [Header("Explosion Visualization")]
-    public GameObject radiusInfectionPrefab; // Префаб ефекту
-    public float infectionLifetime = 1.5f;   // Час життя ефекту
-
+    public GameObject radiusInfectionPrefab;
+    public float infectionLifetime = 1.5f;
+    private float speed = 12f;
+    private float explosionMultiplier = 3f;
+    private LayerMask hitLayers;
 
     Rigidbody rb;
+    Collider col;
     public event Action<Projectile, Collider> OnHit;
 
     bool fired = false;
     Coroutine lifeCoroutine;
 
-    // Для Gizmos
+
     Vector3 lastExplosionPos;
     float lastExplosionRadius;
 
-    // Ссилка на пул
     ProjectilePool projectilePool;
+    GameplayConfig config;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
         rb.useGravity = false;
         rb.isKinematic = true;
+
+
+        col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+    }
+
+    void SetVelues()
+    {
+        config = Instances.Instance.Get<GameplayConfig>();
+        speed = config.projectileSpeed;
+        explosionMultiplier = config.explosionMultiplier;
+        hitLayers = config.obstacleLayer;
     }
 
     public void Init(float r, ProjectilePool pool = null)
     {
+        SetVelues();
         radius = r;
         transform.localScale = Vector3.one * radius * 2f;
         fired = false;
-        rb.isKinematic = true;
         projectilePool = pool;
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+        }
+        if (col != null)
+        {
+            col.enabled = false;
+        }
+
+        if (lifeCoroutine != null)
+        {
+            StopCoroutine(lifeCoroutine);
+            lifeCoroutine = null;
+        }
     }
 
     public void ResetState()
@@ -54,33 +84,56 @@ public class Projectile : MonoBehaviour
             lifeCoroutine = null;
         }
         fired = false;
-        var col = GetComponent<Collider>();
-        if (col != null) col.enabled = true;
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+        }
+        if (col != null)
+        {
+            col.enabled = false;
+        }
     }
+
 
     public void Fire(Vector3 dir)
     {
+        if (fired) return;
         fired = true;
-        rb.isKinematic = false;
-        rb.linearVelocity = dir.normalized * speed;
+
+        if (col != null) col.enabled = true;
+
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.linearVelocity = dir.normalized * speed; // правильно: velocity, не linearVelocity
+        }
+
         if (lifeCoroutine != null) StopCoroutine(lifeCoroutine);
         lifeCoroutine = StartCoroutine(AutoReturnCoroutine(maxLifeTime));
     }
 
+
     void OnTriggerEnter(Collider other)
     {
         if (!fired) return;
+
         if ((hitLayers.value & (1 << other.gameObject.layer)) == 0) return;
 
         if (other.TryGetComponent<Obstacle>(out var obstacle))
         {
             obstacle.HitBy(this, other);
-            // викликаємо DoExplosionEffect без передачі obstacle.radius
             DoExplosionEffect(obstacle.transform.position);
         }
         else if (other.TryGetComponent<IHitble>(out var hittable))
         {
             hittable.HitBy(this, other);
+            DoExplosionEffect(other.ClosestPoint(transform.position));
+        }
+        else
+        {
+            DoExplosionEffect(other.ClosestPoint(transform.position));
         }
 
         OnHit?.Invoke(this, other);
@@ -88,25 +141,16 @@ public class Projectile : MonoBehaviour
         ReturnToPool();
     }
 
-
-
     void DoExplosionEffect(Vector3 center)
     {
-        // беремо найбільшу компоненту масштабу (щоб врахувати non-uniform scale / lossy scale)
         Vector3 lossy = transform.lossyScale;
         float maxScale = Mathf.Max(lossy.x, Mathf.Max(lossy.y, lossy.z));
-
-        // діаметр = maxScale (бо ти ставиш localScale = Vector3.one * radius * 2f)
-        // тому радіус снаряду = maxScale * 0.5f
         float projectileRadius = maxScale * 0.5f;
-
-        // фінальний радіус вибуху — від снаряду, помножений на множник
         float explosionRadius = projectileRadius * explosionMultiplier;
 
         lastExplosionPos = center;
         lastExplosionRadius = explosionRadius;
 
-        // Створюємо візуальний ефект
         if (radiusInfectionPrefab != null)
         {
             GameObject effect = Instantiate(radiusInfectionPrefab, center, Quaternion.identity);
@@ -123,37 +167,37 @@ public class Projectile : MonoBehaviour
             }
         }
 
-        // Пошук об'єктів у зоні вибуху
         Collider[] hits = Physics.OverlapSphere(center, explosionRadius, hitLayers);
         foreach (var hit in hits)
         {
             if (hit.TryGetComponent<Obstacle>(out var nearbyObstacle))
             {
-                if (Vector3.Distance(center, nearbyObstacle.transform.position) < 0.01f) continue;
                 nearbyObstacle.HitBy(this, hit);
             }
         }
     }
 
 
-
-
     void ReturnToPool()
     {
         fired = false;
         if (lifeCoroutine != null) { StopCoroutine(lifeCoroutine); lifeCoroutine = null; }
-        rb.linearVelocity = Vector3.zero;
-        rb.isKinematic = true;
 
-        var col = GetComponent<Collider>();
-        if (col != null) col.enabled = false;
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.isKinematic = true;
+        }
+
+        if (col != null)
+            col.enabled = false;
+
 
         if (projectilePool != null)
-            projectilePool.Return(this); // повертаємо в свій пул
+            projectilePool.Return(this);
         else
-            gameObject.SetActive(false); // fallback, просто вимикаємо
+            gameObject.SetActive(false);
     }
-
 
     void OnDrawGizmos()
     {
@@ -170,4 +214,6 @@ public class Projectile : MonoBehaviour
         if (!gameObject.activeInHierarchy) yield break;
         ReturnToPool();
     }
+
+    public void SetPool(ProjectilePool pool) => projectilePool = pool;
 }
