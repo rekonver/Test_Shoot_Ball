@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: BaseConfig
   m_EditorClassIdentifier: 
   OpenDistance: 5
-  initialPlayerRadius: 0.6
-  minCriticalRadius: 0.09
+  initialPlayerRadius: 0.8
+  minCriticalRadius: 0.2
   initialReservePercent: 0.2
   PlayerMoveSpeed: 2
   chargeRate: 0.6
@@ -24,7 +24,9 @@ MonoBehaviour:
   infectionMultiplier: 1.1
   obstacleLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 8
   advanceSpeed: 2
   doorOpenDistance: 5
   mutation: 0.1
+  projectileSpeed: 12
+  explosionMultiplier: 4
