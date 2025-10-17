@@ -3,16 +3,17 @@ using UnityEngine;
 
 public class Obstacle : MonoBehaviour, IHitble
 {
-    public Transform DownSpawnPos; 
-    public float radius = 0.5f;
+    public Transform DownSpawnPos;
+    public ObstaclePool pool;
     public bool exploded = false;
+    [SerializeField] private float radius = 0.5f;
 
     [Header("Explosion")]
-    public GameObject explosionPrefab;
-    public float explosionEffectLifetime = 1.5f;
-    public float animationTimeout = 1f; 
-    public Animator animator;
-    public ObstaclePool pool;
+    [SerializeField] private GameObject explosionPrefab;
+    [SerializeField] private float explosionEffectLifetime = 1.5f;
+    [SerializeField] private float animationTimeout = 1f; 
+    [SerializeField] private Animator animator;
+
     [SerializeField] private bool GodMod = false;
 
     public void HitBy(Projectile projectile, Collider collider)
@@ -43,7 +44,6 @@ public class Obstacle : MonoBehaviour, IHitble
         
         if (col != null) col.enabled = false;
 
-        // Чекаємо animationTimeout
         yield return new WaitForSeconds(animationTimeout);
 
 
@@ -62,20 +62,6 @@ public class Obstacle : MonoBehaviour, IHitble
             }
         }
 
-        // Повернення в пул
-        if (pool != null)
-        {
-            pool.Return(this);
-        }
-        else
-        {
-            gameObject.SetActive(false);
-        }
-    }
-
-    // Скидання стану для повторного використання в пулі
-    public void ResetState()
-    {
-        exploded = false;
+        pool.Return(this);
     }
 }

@@ -6,15 +6,14 @@ using UnityEngine;
 public class ObstacleSpawner : MonoBehaviour
 {
     [Header("Spawner settings")]
-    public GameObject spawnTarget;
-    public Vector3 spawnAreaSize = new Vector3(10f, 0f, 10f);
-    public int obstacleCount = 20;
-    public float safeRadius = 1f; // Мінімальна відстань між obstacle
-    public bool useSpawnerAsCenter = true;
+    [SerializeField] private GameObject spawnTarget;
+    [SerializeField] private Vector3 spawnAreaSize = new Vector3(10f, 0f, 10f);
+    [SerializeField] private float safeRadius = 1f;
+    [SerializeField] private bool useSpawnerAsCenter = true;
 
     [Header("Cluster settings")]
-    public Transform[] clusterPoints; // Тепер це Transform-и
-    public float clusterRadius = 3f; // Радіус навколо точок скупчень, де можуть з'являтися obstacle
+    [SerializeField] private Transform[] clusterPoints;
+    [SerializeField] private float clusterRadius = 3f;
 
     void Start()
     {
@@ -29,7 +28,7 @@ public class ObstacleSpawner : MonoBehaviour
 
     void SpawnObstacles()
     {
-        var pool = Instances.Instance.GetOrFind<ObstaclePool>();
+        var pool = Instances.Instance.Get<ObstaclePool>();
         if (pool == null)
         {
             Debug.LogError("No ObstaclePool found in Instances!");
@@ -50,7 +49,7 @@ public class ObstacleSpawner : MonoBehaviour
             return;
         }
 
-        // Якщо не задано жодного Transform-а, використовуємо центр спавнера
+
         List<Vector3> clusterPositions = new List<Vector3>();
         if (clusterPoints != null && clusterPoints.Length > 0)
         {
@@ -64,43 +63,41 @@ public class ObstacleSpawner : MonoBehaviour
         Vector3 center = useSpawnerAsCenter ? transform.position : Vector3.zero;
         List<Vector3> occupiedPositions = new List<Vector3>();
         int spawned = 0;
-        int maxAttempts = obstacleCount * 10; // Максимальна кількість спроб
+        int maxAttempts = obstacleCount * 10;
 
         for (int i = 0; i < obstacleCount && spawned < obstacleCount && maxAttempts > 0;)
         {
             maxAttempts--;
 
-            // Вибираємо випадкову точку скупчення
+
             Vector3 clusterCenter = clusterPositions[Random.Range(0, clusterPositions.Count)];
             if (!useSpawnerAsCenter)
             {
                 clusterCenter += center;
             }
 
-            // Генеруємо випадкову позицію в межах clusterRadius
+
             Vector2 randomCircle = Random.insideUnitCircle * clusterRadius;
             Vector3 potentialPos = clusterCenter + new Vector3(randomCircle.x, 0f, randomCircle.y);
 
-            // Перевіряємо, чи позиція в межах spawnArea
+
             if (!IsPositionInSpawnArea(potentialPos, center))
                 continue;
 
-            // Перевіряємо колізії з іншими obstacle
+
             if (IsPositionValid(potentialPos, occupiedPositions, safeRadius))
             {
                 var obstacle = pool.Get(potentialPos, Quaternion.identity);
                 obstacle.gameObject.SetActive(true);
 
-                // 🔹 якщо є об'єкт, до якого треба прикріпити obstacle
+
                 if (spawnTarget != null)
                     obstacle.transform.SetParent(spawnTarget.transform, true);
 
-                // випадкове масштабування
                 float mutation = config.mutation;
                 float randomScaleFactor = 1f + Random.Range(-mutation, mutation);
                 obstacle.transform.localScale *= randomScaleFactor;
 
-                // позиціонування по DownSpawnPos
                 var obstacleScript = obstacle.GetComponent<Obstacle>();
                 if (obstacleScript != null && obstacleScript.DownSpawnPos != null)
                 {
@@ -150,7 +147,6 @@ public class ObstacleSpawner : MonoBehaviour
     {
         Vector3 center = useSpawnerAsCenter ? transform.position : Vector3.zero;
 
-        // Область спавну
         Gizmos.color = new Color(0f, 1f, 0f, 0.25f);
         Vector3 size = new Vector3(spawnAreaSize.x, 0.1f, spawnAreaSize.z);
         Gizmos.DrawCube(center, size);
@@ -158,13 +154,11 @@ public class ObstacleSpawner : MonoBehaviour
         Gizmos.color = Color.green;
         Gizmos.DrawWireCube(center, size);
 
-        // Центр спавну
         Gizmos.color = Color.red;
         float crossSize = 0.5f;
         Gizmos.DrawLine(center + Vector3.left * crossSize, center + Vector3.right * crossSize);
         Gizmos.DrawLine(center + Vector3.back * crossSize, center + Vector3.forward * crossSize);
 
-        // Візуалізація кластерів
         if (clusterPoints != null && clusterPoints.Length > 0)
         {
             foreach (var t in clusterPoints)

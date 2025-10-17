@@ -9,6 +9,6 @@ public class ProjectilePool : ObjectPool<Projectile>
 
     protected override void ResetObject(Projectile obj)
     {
-        obj.ResetState(); // специфічний метод Projectile
+        obj.ResetState();
     }
 }

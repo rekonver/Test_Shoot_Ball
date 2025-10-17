@@ -107,7 +107,7 @@ public class Projectile : MonoBehaviour
         if (rb != null)
         {
             rb.isKinematic = false;
-            rb.linearVelocity = dir.normalized * speed; // правильно: velocity, не linearVelocity
+            rb.linearVelocity = dir.normalized * speed;
         }
 
         if (lifeCoroutine != null) StopCoroutine(lifeCoroutine);

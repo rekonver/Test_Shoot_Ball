@@ -28,8 +28,8 @@ public class PlayerController : MonoBehaviour
         cam = Camera.main;
 
         var inst = Instances.Instance;
-        projectilePool = inst.GetOrFind<ProjectilePool>();
-        door = inst.GetOrFind<Door>();
+        projectilePool = inst.Get<ProjectilePool>();
+        door = inst.Get<Door>();
         config = inst.Get<GameplayConfig>();
 
         playerRadius = config.initialPlayerRadius * (1f + config.initialReservePercent);
@@ -41,6 +41,11 @@ public class PlayerController : MonoBehaviour
         if (isDead) return;
 
         HandleInput();
+
+        if (isCharging && previewProjectile != null)
+        {
+            previewProjectile.transform.position = projectileSpawnPoint.position;
+        }
 
         if (hasStarted)
             transform.position += transform.forward * config.advanceSpeed * Time.deltaTime;
@@ -67,6 +72,7 @@ public class PlayerController : MonoBehaviour
 
         aimDirection = ComputeAimDirection();
         previewProjectile.transform.forward = aimDirection;
+        previewProjectile.transform.position = projectileSpawnPoint.position;
     }
 
     void UpdateCharge(float dt)
@@ -75,16 +81,30 @@ public class PlayerController : MonoBehaviour
 
         aimDirection = ComputeAimDirection();
         previewProjectile.transform.forward = aimDirection;
+        previewProjectile.transform.position = projectileSpawnPoint.position;
 
         chargeTime += dt;
-        float projRadius = Mathf.Clamp(
-            config.minProjectileRadius + config.chargeRate * chargeTime,
-            config.minProjectileRadius,
-            Mathf.Min(config.maxProjectileRadius, playerRadius)
-        );
+        float desiredProj = config.minProjectileRadius + config.chargeRate * chargeTime;
 
-        previewProjectile.Init(projRadius, projectilePool);
-        UpdateVisualScale(Mathf.Max(config.minCriticalRadius, playerRadius - (projRadius - config.minProjectileRadius) * config.transferK));
+        float maxByPlayer = Mathf.Min(config.maxProjectileRadius, playerRadius);
+        float maxByCritical = config.minProjectileRadius;
+        if (config.transferK > 0f)
+            maxByCritical = config.minProjectileRadius + (playerRadius - config.minCriticalRadius) / config.transferK;
+
+        float allowedMax = Mathf.Max(config.minProjectileRadius, Mathf.Min(maxByPlayer, maxByCritical));
+
+        desiredProj = Mathf.Clamp(desiredProj, config.minProjectileRadius, allowedMax);
+
+        previewProjectile.Init(desiredProj, projectilePool);
+
+        float newPlayerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - (desiredProj - config.minProjectileRadius) * config.transferK);
+        UpdateVisualScale(newPlayerRadius);
+
+        const float eps = 1e-6f;
+        if (desiredProj >= allowedMax - eps)
+        {
+            ReleaseCharge();
+        }
     }
 
     void ReleaseCharge()
@@ -96,6 +116,9 @@ public class PlayerController : MonoBehaviour
         Vector3 finalAim = ComputeAimDirection();
         aimDirection = finalAim;
         previewProjectile.transform.forward = finalAim;
+
+        previewProjectile.transform.position = projectileSpawnPoint.position;
+        previewProjectile.transform.rotation = Quaternion.LookRotation(finalAim, Vector3.up);
 
         float projRadius = previewProjectile.radius;
         playerRadius = Mathf.Max(config.minCriticalRadius, playerRadius - (projRadius - config.minProjectileRadius) * config.transferK);
@@ -142,7 +165,7 @@ public class PlayerController : MonoBehaviour
         if (Physics.Raycast(ray, out RaycastHit hit, 100f))
         {
             Vector3 hitPoint = hit.point;
-            hitPoint.y = projectileSpawnPoint.position.y; // фіксуємо Y
+            hitPoint.y = projectileSpawnPoint.position.y;
             return (hitPoint - projectileSpawnPoint.position).normalized;
         }
 
@@ -177,6 +200,12 @@ public class PlayerController : MonoBehaviour
         var rb = GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
 
+        if (previewProjectile != null && projectilePool != null)
+        {
+            projectilePool.Return(previewProjectile);
+            previewProjectile = null;
+        }
+
         StopAllCoroutines();
         animator?.SetTrigger("Death");
 
@@ -200,6 +229,7 @@ public class PlayerController : MonoBehaviour
         transform.localScale = Vector3.zero;
         OnDeath?.Invoke();
 
-        Debug.Log($"{name}: Player smoothly shrunk to zero (death).");
+        var level = Instances.Instance.Get<LevelManager>();
+        level.Fail();
     }
 }

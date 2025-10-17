@@ -1,25 +1,33 @@
 using UnityEngine;
-
+using UnityEngine.SceneManagement;
+using System.Collections;
 public class LevelManager : MonoBehaviour
 {
     public GameplayConfig config;
-    public PlayerController player;
+    bool restartScheduled = false;
 
     void Awake()
     {
         if (Instances.Instance != null) Instances.Instance.Register<LevelManager>(this);
     }
 
-    public void Fail(string reason)
+    public void Fail()
     {
-        Debug.Log("Level failed: " + reason);
-        // TODO: UI, restart
+        if (!restartScheduled)
+            StartCoroutine(RestartAfterDelay(1f));
     }
 
     public void Success()
     {
-        Debug.Log("Level success");
-        // TODO: UI, next level
+        if (!restartScheduled)
+            StartCoroutine(RestartAfterDelay(1f));
+    }
+
+    IEnumerator RestartAfterDelay(float delay)
+    {
+        restartScheduled = true;
+        yield return new WaitForSeconds(delay);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     void OnDestroy()

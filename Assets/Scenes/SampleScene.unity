@@ -119,6 +119,17 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!114 &76274857 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 4070728631497589376, guid: 7f5a07aca58ec9a40bedc970fdc9a44b, type: 3}
+  m_PrefabInstance: {fileID: 2632358233277486037}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cb59720c04419d84e9c5407fcf1606a6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &281835542
 GameObject:
   m_ObjectHideFlags: 0
@@ -493,7 +504,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   config: {fileID: 11400000, guid: 781f35b3ff001d44db1b78b4571614f2, type: 2}
-  player: {fileID: 0}
 --- !u!4 &621681483
 Transform:
   m_ObjectHideFlags: 0
@@ -1232,7 +1242,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: efb40b7f2616069469e496d95985aa96, type: 2}
     - target: {fileID: 6360341393014300837, guid: cf46740f887a80d4086dbf216098a7a5, type: 3}
       propertyPath: m_Name
-      value: Enemy
+      value: WIN
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1428,7 +1438,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   infectionSystem: {fileID: 862654100}
   levelManager: {fileID: 621681482}
-  playerController: {fileID: 0}
+  playerController: {fileID: 76274857}
   door: {fileID: 1758334568}
   config: {fileID: 11400000, guid: 781f35b3ff001d44db1b78b4571614f2, type: 2}
   poolsContainer: {fileID: 1038083090}

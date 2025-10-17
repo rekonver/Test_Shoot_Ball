@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: BaseConfig
   m_EditorClassIdentifier: 
   OpenDistance: 5
-  initialPlayerRadius: 0.8
+  initialPlayerRadius: 0.7
   minCriticalRadius: 0.2
   initialReservePercent: 0.2
   PlayerMoveSpeed: 2
