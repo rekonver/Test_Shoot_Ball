@@ -3,17 +3,15 @@ using UnityEngine;
 public class TexturedPath : MonoBehaviour
 {
     [Tooltip("Префаб Plane (опціонально). Якщо null — створиться стандартний Plane (10x10).")]
-    public GameObject planePrefab;
+    [SerializeField] private GameObject planePrefab;
 
     [Tooltip("Початок доріжки (опціонально). Якщо null — використовується цей об'єкт.")]
-    public Transform startPoint;
+    [SerializeField] private Transform startPoint;
 
     [Tooltip("Кінець доріжки (обов’язковий).")]
-    public Transform endPoint;
+    [SerializeField] private Transform endPoint;
 
-    [Tooltip("Оригінальний розмір Plane у префабі (Unity Plane = 10).")]
-    public float planeOriginalSize = 10f;
-
+    private float planeOriginalSize = 10f;
     private GameObject planeInstance;
     private float playerWidth = 0.5f;
     private float lastPlayerWidth = -1f;
@@ -47,17 +45,16 @@ public class TexturedPath : MonoBehaviour
     {
         if (endPoint == null || planeInstance == null) return;
 
-        // отримуємо гравця та його ширину
-        var player = Instances.Instance.GetOrFind<PlayerController>();
+
+        var player = Instances.Instance.Get<PlayerController>();
         if (player != null)
             playerWidth = player.transform.localScale.x;
 
-        // позиції початку і кінця
+
         Vector3 start = startPoint ? startPoint.position : transform.position;
         Vector3 end = endPoint.position;
         start.y = end.y = transform.position.y;
 
-        // перевіряємо, чи потрібно оновлювати
         if (!force && 
             Mathf.Approximately(playerWidth, lastPlayerWidth) &&
             start == lastStartPos && end == lastEndPos)
@@ -67,7 +64,7 @@ public class TexturedPath : MonoBehaviour
         lastStartPos = start;
         lastEndPos = end;
 
-        // напрямок і довжина
+
         Vector3 dir = end - start;
         float length = dir.magnitude;
 
